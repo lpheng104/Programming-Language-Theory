@@ -2,184 +2,118 @@
 
 (require "util.rkt")
 
-
 (define
   process
   (lambda (parsed-exp)
+    (
+     cond
 
-    (cond
+     ((null? parsed-exp)
+      (displayln "ERROR: EMPTY PROGRAM."))
 
-      ; -------------------------
-      ; EMPTY
-      ; -------------------------
+     ; error handler from parser
+     ((void? parsed-exp)
+      (void))
 
-      ((null? parsed-exp)
-       (displayln
-        "ERROR: EMPTY PROGRAM."))
+     ; variable
+     ((equal? 'var-exp (car parsed-exp))
+      (resolve_env environment (cadr parsed-exp)))
 
+     ; number
+     ((equal? 'num-exp (car parsed-exp))
+      (car (cdr parsed-exp)))
 
-      ; parser returned an error
-      ((void? parsed-exp)
-       (void))
+     ; math
+     ((eq? 'math-exp (car parsed-exp))
 
+      (cond
 
-      ; -------------------------
-      ; FUNCTION CALL
-      ; -------------------------
+        ((and
+          (number? (process (caddr parsed-exp)))
+          (number? (process (cadddr parsed-exp))))
 
-      ; Parsed format:
-      ;
-      ; ((func-exp (...) (...))
-      ;  (...arguments...))
+         (do_math
+          (cadr parsed-exp)
+          (process (caddr parsed-exp))
+          (process (cadddr parsed-exp))))
 
-      ((and
-        (list? parsed-exp)
-        (list? (car parsed-exp))
-        (eq?
-         'func-exp
-         (car (car parsed-exp))))
-
-       (let*
-           (
-            ; (func-exp parameters body)
-            (function-exp
-             (car parsed-exp))
-
-            ; parsed argument expressions
-            (arguments
-             (cadr parsed-exp))
-
-            ; parameter expressions
-            (parameters
-             (cadr function-exp))
-
-            ; function body
-            (body
-             (caddr function-exp))
-
-            ; Evaluate arguments
-            ;
-            ; ((num-exp 4) (num-exp 5))
-            ; becomes
-            ; (4 5)
-            (values
-             (map process arguments))
-
-            ; create:
-            ; ((a 4) (b 5))
-            (new-scope
-             (create_function_scope
-              parameters
-              values))
-            )
-
-         ; push the function's scope
-         (push_scope new-scope)
-
-         ; execute the body
-         (let
-             ((result
-               (process body)))
-
-           ; remove function scope
-           (pop_scope)
-
-           ; return body result
-           result))
-       )
-
-
-      ; -------------------------
-      ; VARIABLE
-      ; -------------------------
-
-      ((eq?
-        'var-exp
-        (car parsed-exp))
-
-       (let
-           ((value
-             (resolve_env
-              environment
-              (cadr parsed-exp))))
-
-         (if
-          (void? value)
-
-          (begin
-            (displayln
-             "ERROR: variable not found")
-            (void))
-
-          value)))
-
-
-      ; -------------------------
-      ; NUMBER
-      ; -------------------------
-
-      ((eq?
-        'num-exp
-        (car parsed-exp))
-
-       (cadr parsed-exp))
-
-
-      ; -------------------------
-      ; STRING
-      ; -------------------------
-
-      ((eq?
-        'string-exp
-        (car parsed-exp))
-
-       (cadr parsed-exp))
-
-
-      ; -------------------------
-      ; MATH
-      ; -------------------------
-
-      ((eq?
-        'math-exp
-        (car parsed-exp))
-
-       (let
-           (
-            (left
-             (process
-              (caddr parsed-exp)))
-
-            (right
-             (process
-              (cadddr parsed-exp)))
-            )
-
-         (if
-          (and
-           (number? left)
-           (number? right))
-
-          (do_math
-           (cadr parsed-exp)
-           left
-           right)
-
-          (displayln
-           "INTERPRETER ERROR: non-numeric cannot apply math.")))
-       )
-
-
-      ; -------------------------
-      ; UNKNOWN EXPRESSION
-      ; -------------------------
-
-      (else
-       (displayln
-        "ERROR: expression has not been supported yet."))
-
+        (else
+         (displayln
+          "INTERPRETOR ERROR: non-numeric cannot apply math."))
+        )
       )
-    )
+
+     ; ====================================
+     ; FUNCTION
+     ; ====================================
+
+     ((eq? 'func-exp (car parsed-exp))
+
+      (let*
+          (
+           ; Parameter/value pairs
+           (pairs (cadr parsed-exp))
+
+           ; Create the function scope
+           (new-scope
+            (map
+             (lambda (pair)
+               (list
+                (cadr (car pair))
+                (process (cadr pair))))
+             pairs))
+
+           ; Function body
+           (bulk (caddr parsed-exp))
+           )
+
+        ; -----------------------------
+        ; PUSH SCOPE
+        ; -----------------------------
+
+        (set! environment
+              (cons new-scope environment))
+
+
+        ; -----------------------------
+        ; EXECUTE BODY
+        ; -----------------------------
+
+        (let
+            ((result
+
+              (let loop
+                  ((statements (cdr bulk))
+                   (last-result (void)))
+
+                (if
+                 (null? statements)
+
+                 last-result
+
+                 (loop
+                  (cdr statements)
+                  (process
+                   (car statements)))))))
+
+          ; -----------------------------
+          ; POP SCOPE
+          ; -----------------------------
+
+          (set! environment
+                (cdr environment))
+
+          ; Return result
+          result))
+      )
+
+
+     ; unsupported expression
+     (else
+      (displayln
+       "ERROR: expression has not been supported yet."))
+
+     ))
   )
 
 (provide (all-defined-out))
