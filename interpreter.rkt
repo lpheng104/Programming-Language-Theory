@@ -1,29 +1,28 @@
 #lang racket
+(require "util.rkt")
 
-(provide value-of)
-
-; Search the environment for a variable
-(define resolve
-  (lambda (env var-name)
+; Takes the parser's output and executes it.
+; Currently only var-exp expressions are supported.
+(define
+  execute
+  (lambda (exp)
     (cond
-      ((null? env)
-       (error "variable not found"))
+      ; Check whether this is a var-exp
+      ((and (list? exp)
+            (= (length exp) 2)
+            (eq? (car exp) 'var-exp))
 
-      ((eq? (car (car env)) var-name)
-       (cadr (car env)))
+       ; Look up the variable in the environment
+       (let ((value (resolve_env environment (cadr exp))))
+         (if (void? value)
+             (displayln "ERROR: variable not found")
+             value)))
 
+      ; Any other expression is currently unsupported
       (else
-       (resolve (cdr env) var-name)))))
+       (displayln "ERROR: unsupported expression"))
+      )
+    )
+  )
 
-
-; Interpret the parser's output
-(define value-of
-  (lambda (exp env)
-    (cond
-
-      ; If parser gave us (var-exp a)
-      ((eq? (car exp) 'var-exp)
-       (resolve env (cadr exp)))
-
-      (else
-       (error "unknown expression")))))
+(provide (all-defined-out))
