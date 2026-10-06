@@ -2,118 +2,213 @@
 
 (require "util.rkt")
 
+
 (define
   process
   (lambda (parsed-exp)
-    (
-     cond
 
-     ((null? parsed-exp)
-      (displayln "ERROR: EMPTY PROGRAM."))
+    (cond
 
-     ; error handler from parser
-     ((void? parsed-exp)
-      (void))
+      ; ======================================
+      ; EMPTY PROGRAM
+      ; ======================================
 
-     ; variable
-     ((equal? 'var-exp (car parsed-exp))
-      (resolve_env environment (cadr parsed-exp)))
+      ((null? parsed-exp)
+       (displayln
+        "ERROR: EMPTY PROGRAM."))
 
-     ; number
-     ((equal? 'num-exp (car parsed-exp))
-      (car (cdr parsed-exp)))
 
-     ; math
-     ((eq? 'math-exp (car parsed-exp))
+      ; ======================================
+      ; PARSER ERROR
+      ; ======================================
 
-      (cond
+      ((void? parsed-exp)
+       (void))
 
-        ((and
-          (number? (process (caddr parsed-exp)))
-          (number? (process (cadddr parsed-exp))))
 
-         (do_math
-          (cadr parsed-exp)
-          (process (caddr parsed-exp))
-          (process (cadddr parsed-exp))))
+      ; ======================================
+      ; VARIABLE
+      ; ======================================
 
-        (else
-         (displayln
-          "INTERPRETOR ERROR: non-numeric cannot apply math."))
-        )
+      ((eq? 'var-exp (car parsed-exp))
+
+       (let
+           ((value
+             (resolve_env
+              environment
+              (cadr parsed-exp))))
+
+         (if
+          (void? value)
+
+          (begin
+            (displayln
+             "ERROR: variable not found")
+            (void))
+
+          value))
+       )
+
+
+      ; ======================================
+      ; NUMBER
+      ; ======================================
+
+      ((eq? 'num-exp (car parsed-exp))
+
+       (cadr parsed-exp))
+
+
+      ; ======================================
+      ; MATH
+      ; ======================================
+
+      ((eq? 'math-exp (car parsed-exp))
+
+       (let
+           (
+            (left
+             (process
+              (caddr parsed-exp)))
+
+            (right
+             (process
+              (cadddr parsed-exp)))
+            )
+
+         (if
+          (and
+           (number? left)
+           (number? right))
+
+          (do_math
+           (cadr parsed-exp)
+           left
+           right)
+
+          (displayln
+           "INTERPRETER ERROR: non-numeric cannot apply math.")))
+       )
+
+
+      ; ======================================
+      ; FUNCTION
+      ; ======================================
+
+      ((eq? 'func-exp (car parsed-exp))
+
+       (let*
+           (
+            ; Get parameter/value pairs
+            (pairs
+             (cadr parsed-exp))
+
+            ; Create a new scope.
+            ;
+            ; Example:
+            ;
+            ; ((var-exp a) (num-exp 4))
+            ; ((var-exp b) (num-exp 5))
+            ;
+            ; becomes:
+            ;
+            ; ((a 4) (b 5))
+
+            (new-scope
+
+             (map
+              (lambda (pair)
+
+                (list
+
+                 ; Get variable name
+                 (cadr
+                  (car pair))
+
+                 ; Get parameter value
+                 (process
+                  (cadr pair)))
+
+                )
+
+              pairs))
+
+            ; Get the bulk-exp
+            (bulk
+             (caddr parsed-exp))
+            )
+
+
+         ; ==================================
+         ; PUSH NEW SCOPE
+         ; ==================================
+
+         (push_scope new-scope)
+
+
+         ; ==================================
+         ; EXECUTE FUNCTION BODY
+         ; ==================================
+
+         (let
+             (
+              (result
+
+               (let loop
+                   (
+                    ; Remove 'bulk-exp
+                    ; and get its statements
+                    (statements
+                     (cdr bulk))
+
+                    (last-result
+                     (void))
+                    )
+
+                 (if
+                  (null? statements)
+
+                  ; No statements left
+                  (begin
+                    last-result)
+
+                  ; Execute next statement
+                  (loop
+                   (cdr statements)
+
+                   (process
+                    (car statements))))
+                 ))
+              )
+
+
+           ; ==================================
+           ; POP FUNCTION SCOPE
+           ; ==================================
+
+           (pop_scope)
+
+
+           ; ==================================
+           ; RETURN FUNCTION RESULT
+           ; ==================================
+
+           result)
+         )
+       )
+
+
+      ; ======================================
+      ; UNSUPPORTED EXPRESSION
+      ; ======================================
+
+      (else
+       (displayln
+        "ERROR: expression has not been supported yet."))
+
       )
-
-     ; ====================================
-     ; FUNCTION
-     ; ====================================
-
-     ((eq? 'func-exp (car parsed-exp))
-
-      (let*
-          (
-           ; Parameter/value pairs
-           (pairs (cadr parsed-exp))
-
-           ; Create the function scope
-           (new-scope
-            (map
-             (lambda (pair)
-               (list
-                (cadr (car pair))
-                (process (cadr pair))))
-             pairs))
-
-           ; Function body
-           (bulk (caddr parsed-exp))
-           )
-
-        ; -----------------------------
-        ; PUSH SCOPE
-        ; -----------------------------
-
-        (set! environment
-              (cons new-scope environment))
-
-
-        ; -----------------------------
-        ; EXECUTE BODY
-        ; -----------------------------
-
-        (let
-            ((result
-
-              (let loop
-                  ((statements (cdr bulk))
-                   (last-result (void)))
-
-                (if
-                 (null? statements)
-
-                 last-result
-
-                 (loop
-                  (cdr statements)
-                  (process
-                   (car statements)))))))
-
-          ; -----------------------------
-          ; POP SCOPE
-          ; -----------------------------
-
-          (set! environment
-                (cdr environment))
-
-          ; Return result
-          result))
-      )
-
-
-     ; unsupported expression
-     (else
-      (displayln
-       "ERROR: expression has not been supported yet."))
-
-     ))
+    )
   )
+
 
 (provide (all-defined-out))
