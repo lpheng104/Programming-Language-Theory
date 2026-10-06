@@ -1,21 +1,22 @@
 #lang racket
 
+(require "parser.rkt")
+(require "util.rkt")
 (require "interpreter.rkt")
 
-; Test environment
-(define env
-  '((a 10)
-    (b 20)
-    (c 30)))
+(displayln "=== Interpreter Tests ===")
 
+; Test 1: variable a exists
+(display "Test a: ")
+(displayln (execute (parse 'a)))
+; Expected: 1
 
-(displayln "TEST 1: Find variable a")
-(displayln (value-of '(var-exp a) env))
+; Test 2: variable b exists
+(display "Test b: ")
+(displayln (execute (parse 'b)))
+; Expected: 2
 
-
-(displayln "TEST 2: Find variable b")
-(displayln (value-of '(var-exp b) env))
-
-
-(displayln "TEST 3: Find variable c")
-(displayln (value-of '(var-exp c) env))
+; Test 3: variable c does not exist
+(display "Test c: ")
+(execute (parse 'c))
+; Expected: ERROR: variable not found
