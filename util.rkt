@@ -1,68 +1,198 @@
 #lang racket
 
-; A scope contains key-value pairs
-; Example:
-; (a 1)
-; (b 2)
+; ---------------------------------
+; GLOBAL SCOPE
+; ---------------------------------
 
 (define
   scope
   (list
    (list 'a 1)
    (list 'b 2)
-   )
-  )
+   ))
 
-; The environment is a list of scopes
+; environment is a stack of scopes
 (define
   environment
   (list scope)
   )
 
 
-; Searches one scope for a variable
+; ---------------------------------
+; VARIABLE LOOKUP
+; ---------------------------------
+
+; search one scope
 (define
-  resolve_scope
-  (lambda (scope variable)
+  resolve
+  (lambda (var_scope var_name)
+
     (cond
-      ; If there are no more variables in this scope,
-      ; return void to indicate it was not found
-      ((null? scope)
+
+      ((null? var_scope)
        (void))
 
-      ; If the first variable matches,
-      ; return its value
-      ((eq? (car (car scope)) variable)
-       (cadr (car scope)))
+      ((eq? (car (car var_scope)) var_name)
+       (cadr (car var_scope)))
 
-      ; Otherwise continue searching
       (else
-       (resolve_scope (cdr scope) variable))
+       (resolve
+        (cdr var_scope)
+        var_name))
       )
     )
   )
 
 
-; Searches through all scopes in the environment
+; search the whole environment
 (define
   resolve_env
-  (lambda (env variable)
+  (lambda (var_env var_name)
+
     (cond
-      ; No scopes left, variable was not found
-      ((null? env)
+
+      ((null? var_env)
        (void))
 
-      ; Search the first scope
+      ((void?
+        (resolve
+         (car var_env)
+         var_name))
+
+       (resolve_env
+        (cdr var_env)
+        var_name))
+
       (else
-       (let ((value (resolve_scope (car env) variable)))
-         (if (void? value)
+       (resolve
+        (car var_env)
+        var_name))
+      )
+    )
+  )
 
-             ; Not found in this scope,
-             ; search the next scope
-             (resolve_env (cdr env) variable)
 
-             ; Found it
-             value)))
+; ---------------------------------
+; FUNCTION SCOPE UTILITIES
+; ---------------------------------
+
+; Push a new scope onto the
+; environment stack
+(define
+  push_scope
+  (lambda (new_scope)
+
+    (set!
+     environment
+     (cons
+      new_scope
+      environment))
+    )
+  )
+
+
+; Remove the top scope when
+; the function finishes
+(define
+  pop_scope
+  (lambda ()
+
+    (cond
+
+      ((null? environment)
+       (displayln
+        "ERROR: environment is empty"))
+
+      (else
+       (set!
+        environment
+        (cdr environment)))
+      )
+    )
+  )
+
+
+; Create a function scope from
+; parameters and values
+;
+; ((var-exp a) (var-exp b))
+; and
+; (4 5)
+;
+; becomes
+;
+; ((a 4) (b 5))
+
+(define
+  create_function_scope
+  (lambda (parameters values)
+
+    (cond
+
+      ((and
+        (null? parameters)
+        (null? values))
+       '())
+
+      ((or
+        (null? parameters)
+        (null? values))
+
+       (error
+        "function parameter count does not match argument count"))
+
+      (else
+
+       (cons
+
+        (list
+         (cadr (car parameters))
+         (car values))
+
+        (create_function_scope
+         (cdr parameters)
+         (cdr values))))
+      )
+    )
+  )
+
+
+; ---------------------------------
+; MATH
+; ---------------------------------
+
+(define
+  do_math
+  (lambda
+      (op left_operand right_operand)
+
+    (cond
+
+      ((eq? '+ op)
+       (+ left_operand right_operand))
+
+      ((eq? '- op)
+       (- left_operand right_operand))
+
+      ((eq? '* op)
+       (* left_operand right_operand))
+
+      ((eq? '/ op)
+       (/ left_operand right_operand))
+
+      ((eq? '// op)
+       (quotient
+        left_operand
+        right_operand))
+
+      ((eq? '% op)
+       (modulo
+        left_operand
+        right_operand))
+
+      (else
+       (displayln
+        "ERROR: unsupported math operator"))
       )
     )
   )
