@@ -1,40 +1,44 @@
 #lang racket
 
-; ---------------------------------
-; GLOBAL SCOPE
-; ---------------------------------
+; ==========================================
+; ENVIRONMENT
+; ==========================================
 
+; Global scope
 (define
   scope
   (list
    (list 'a 1)
    (list 'b 2)
-   ))
+   )
+  )
 
-; environment is a stack of scopes
+; Environment is a stack of scopes
 (define
   environment
   (list scope)
   )
 
 
-; ---------------------------------
-; VARIABLE LOOKUP
-; ---------------------------------
+; ==========================================
+; RESOLVE VARIABLE IN ONE SCOPE
+; ==========================================
 
-; search one scope
 (define
   resolve
   (lambda (var_scope var_name)
 
     (cond
 
+      ; Variable was not found
       ((null? var_scope)
        (void))
 
+      ; Variable was found
       ((eq? (car (car var_scope)) var_name)
        (cadr (car var_scope)))
 
+      ; Keep searching
       (else
        (resolve
         (cdr var_scope)
@@ -44,25 +48,32 @@
   )
 
 
-; search the whole environment
+; ==========================================
+; RESOLVE VARIABLE IN ENVIRONMENT
+; ==========================================
+
 (define
   resolve_env
   (lambda (var_env var_name)
 
     (cond
 
+      ; No more scopes
       ((null? var_env)
        (void))
 
+      ; Variable not found in current scope
       ((void?
         (resolve
          (car var_env)
          var_name))
 
+       ; Search next scope
        (resolve_env
         (cdr var_env)
         var_name))
 
+      ; Variable was found
       (else
        (resolve
         (car var_env)
@@ -72,27 +83,25 @@
   )
 
 
-; ---------------------------------
-; FUNCTION SCOPE UTILITIES
-; ---------------------------------
+; ==========================================
+; PUSH A NEW SCOPE
+; ==========================================
 
-; Push a new scope onto the
-; environment stack
 (define
   push_scope
-  (lambda (new_scope)
+  (lambda (new-scope)
 
     (set!
      environment
-     (cons
-      new_scope
-      environment))
+     (cons new-scope environment))
     )
   )
 
 
-; Remove the top scope when
-; the function finishes
+; ==========================================
+; POP THE TOP SCOPE
+; ==========================================
+
 (define
   pop_scope
   (lambda ()
@@ -100,8 +109,7 @@
     (cond
 
       ((null? environment)
-       (displayln
-        "ERROR: environment is empty"))
+       (displayln "ERROR: environment is empty"))
 
       (else
        (set!
@@ -112,59 +120,13 @@
   )
 
 
-; Create a function scope from
-; parameters and values
-;
-; ((var-exp a) (var-exp b))
-; and
-; (4 5)
-;
-; becomes
-;
-; ((a 4) (b 5))
-
-(define
-  create_function_scope
-  (lambda (parameters values)
-
-    (cond
-
-      ((and
-        (null? parameters)
-        (null? values))
-       '())
-
-      ((or
-        (null? parameters)
-        (null? values))
-
-       (error
-        "function parameter count does not match argument count"))
-
-      (else
-
-       (cons
-
-        (list
-         (cadr (car parameters))
-         (car values))
-
-        (create_function_scope
-         (cdr parameters)
-         (cdr values))))
-      )
-    )
-  )
-
-
-; ---------------------------------
+; ==========================================
 ; MATH
-; ---------------------------------
+; ==========================================
 
 (define
   do_math
-  (lambda
-      (op left_operand right_operand)
+  (lambda (op left_operand right_operand)
 
     (cond
 
@@ -181,14 +143,10 @@
        (/ left_operand right_operand))
 
       ((eq? '// op)
-       (quotient
-        left_operand
-        right_operand))
+       (quotient left_operand right_operand))
 
       ((eq? '% op)
-       (modulo
-        left_operand
-        right_operand))
+       (modulo left_operand right_operand))
 
       (else
        (displayln
@@ -196,5 +154,6 @@
       )
     )
   )
+
 
 (provide (all-defined-out))
