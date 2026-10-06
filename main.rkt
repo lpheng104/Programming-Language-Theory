@@ -1,53 +1,57 @@
 #lang racket
 
 (require "parser.rkt")
-(require "util.rkt")
 (require "interpreter.rkt")
+(require "util.rkt")
 
 
-(displayln "============================")
-(displayln "FUNCTION INTERPRETER TEST")
-(displayln "============================")
+(displayln "==============================")
+(displayln "FUNCTION TEST")
+(displayln "==============================")
+
 (newline)
 
 
-; Our language code:
-;
-; (function (params a b)
-;           (math a + b))
-; (4 5)
+; ==========================================
+; FUNCTION
+; ==========================================
 
-(define
-  function-test
+(define test-function
   '((function
-      (params a b)
-      (math a + b))
+      (a b)
+      ((a * b)))
     (4 5)))
 
 
-; -----------------------------
-; PARSER TEST
-; -----------------------------
+; ==========================================
+; SHOW ORIGINAL
+; ==========================================
 
-(displayln "Original code:")
-(displayln function-test)
+(displayln "Original function:")
+
+(displayln test-function)
 
 (newline)
+
+
+; ==========================================
+; PARSE
+; ==========================================
+
+(define parsed-function
+  (parse test-function))
+
 
 (displayln "Parsed result:")
 
-(define
-  parsed-function
-  (parse function-test))
-
 (displayln parsed-function)
 
-
-; -----------------------------
-; INTERPRETER TEST
-; -----------------------------
-
 (newline)
+
+
+; ==========================================
+; EXECUTE
+; ==========================================
 
 (displayln "Execution result:")
 
@@ -55,11 +59,13 @@
  (process parsed-function))
 
 
-; -----------------------------
-; SHOW ENVIRONMENT CLEANUP
-; -----------------------------
-
 (newline)
 
+
+; ==========================================
+; SHOW ENVIRONMENT
+; ==========================================
+
 (displayln "Environment after function:")
+
 (displayln environment)
