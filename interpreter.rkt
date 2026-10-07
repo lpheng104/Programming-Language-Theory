@@ -3,6 +3,8 @@
 (require "util.rkt")
 
 
+; Process the parser's results
+
 (define
   process
   (lambda (parsed-exp)
@@ -30,23 +32,13 @@
       ; VARIABLE
       ; ======================================
 
-      ((eq? 'var-exp (car parsed-exp))
+      ((equal?
+        'var-exp
+        (car parsed-exp))
 
-       (let
-           ((value
-             (resolve_env
-              environment
-              (cadr parsed-exp))))
-
-         (if
-          (void? value)
-
-          (begin
-            (displayln
-             "ERROR: variable not found")
-            (void))
-
-          value))
+       (resolve_env
+        environment
+        (cadr parsed-exp))
        )
 
 
@@ -54,16 +46,33 @@
       ; NUMBER
       ; ======================================
 
-      ((eq? 'num-exp (car parsed-exp))
+      ((equal?
+        'num-exp
+        (car parsed-exp))
 
-       (cadr parsed-exp))
+       (cadr parsed-exp)
+       )
 
 
       ; ======================================
-      ; MATH
+      ; STRING
       ; ======================================
 
-      ((eq? 'math-exp (car parsed-exp))
+      ((equal?
+        'string-exp
+        (car parsed-exp))
+
+       (cadr parsed-exp)
+       )
+
+
+      ; ======================================
+      ; MATH EXPRESSION
+      ; ======================================
+
+      ((eq?
+        'math-exp
+        (car parsed-exp))
 
        (let
            (
@@ -76,125 +85,212 @@
               (cadddr parsed-exp)))
             )
 
-         (if
-          (and
-           (number? left)
-           (number? right))
+         (cond
 
-          (do_math
-           (cadr parsed-exp)
-           left
-           right)
+           ((and
+             (number? left)
+             (number? right))
 
-          (displayln
-           "INTERPRETER ERROR: non-numeric cannot apply math.")))
+            (do_math
+             (cadr parsed-exp)
+             left
+             right))
+
+           (else
+            (displayln
+             "INTERPRETOR ERROR: non-numeric cannot apply math."))
+           )
+         )
        )
 
 
       ; ======================================
-      ; FUNCTION
+      ; BOOLEAN EXPRESSION
+      ;
+      ; (boolean-exp > left right)
+      ;
+      ; returns #t or #f
       ; ======================================
 
-      ((eq? 'func-exp (car parsed-exp))
+      ((eq?
+        'boolean-exp
+        (car parsed-exp))
 
-       (let*
+       ; NOT only has one operand
+       (if
+        (eq?
+         '!
+         (cadr parsed-exp))
+
+        ; Process (! value)
+        (not
+         (process
+          (caddr parsed-exp)))
+
+        ; All two-operand boolean expressions
+        (let
+            (
+             (left
+              (process
+               (caddr parsed-exp)))
+
+             (right
+              (process
+               (cadddr parsed-exp)))
+             )
+
+          (do_boolean
+           (cadr parsed-exp)
+           left
+           right)
+          )
+        )
+       )
+
+
+      ; ======================================
+      ; ASK EXPRESSION
+      ;
+      ; If condition is #t:
+      ;     execute true bulk-exp
+      ;
+      ; If condition is #f:
+      ;     execute false bulk-exp
+      ; ======================================
+
+      ((eq?
+        'ask-exp
+        (car parsed-exp))
+
+       (if
+        (process
+         (cadr parsed-exp))
+
+        ; TRUE
+        (process
+         (caddr parsed-exp))
+
+        ; FALSE
+        (process
+         (cadddr parsed-exp))
+        )
+       )
+
+
+      ; ======================================
+      ; FUNCTION EXPRESSION
+      ; ======================================
+
+      ((eq?
+        'func-exp
+        (car parsed-exp))
+
+       (let
            (
-            ; Get parameter/value pairs
-            (pairs
-             (cadr parsed-exp))
+            ; Add parameter/value scope
+            ; to the original environment
+            (my_env
 
-            ; Create a new scope.
-            ;
-            ; Example:
-            ;
-            ; ((var-exp a) (num-exp 4))
-            ; ((var-exp b) (num-exp 5))
-            ;
-            ; becomes:
-            ;
-            ; ((a 4) (b 5))
+             (cons
 
-            (new-scope
+              (map
+               (lambda (pair)
 
-             (map
-              (lambda (pair)
+                 (list
+                  (cadr
+                   (car pair))
 
-                (list
+                  (process
+                   (cadr pair)))
+                 )
 
-                 ; Get variable name
-                 (cadr
-                  (car pair))
+               (cadr parsed-exp))
 
-                 ; Get parameter value
-                 (process
-                  (cadr pair)))
+              environment)
+             )
 
-                )
-
-              pairs))
-
-            ; Get the bulk-exp
-            (bulk
+            ; Function body
+            (expression_lst
              (caddr parsed-exp))
+
+            ; Return value
+            (ret_val
+             (void))
             )
 
+         (begin
 
-         ; ==================================
-         ; PUSH NEW SCOPE
-         ; ==================================
+           ; Push function scope
+           (update_base_environment
+            my_env)
 
-         (push_scope new-scope)
+           ; Process bulk-exp and get
+           ; its returned value
+           (set!
+            ret_val
 
+            (cadr
+             (cadr
+              (process
+               expression_lst))))
 
-         ; ==================================
-         ; EXECUTE FUNCTION BODY
-         ; ==================================
+           ; Pop function scope
+           (update_base_environment
+            (cdr environment))
 
-         (let
-             (
-              (result
-
-               (let loop
-                   (
-                    ; Remove 'bulk-exp
-                    ; and get its statements
-                    (statements
-                     (cdr bulk))
-
-                    (last-result
-                     (void))
-                    )
-
-                 (if
-                  (null? statements)
-
-                  ; No statements left
-                  (begin
-                    last-result)
-
-                  ; Execute next statement
-                  (loop
-                   (cdr statements)
-
-                   (process
-                    (car statements))))
-                 ))
-              )
-
-
-           ; ==================================
-           ; POP FUNCTION SCOPE
-           ; ==================================
-
-           (pop_scope)
-
-
-           ; ==================================
-           ; RETURN FUNCTION RESULT
-           ; ==================================
-
-           result)
+           ; Return function result
+           ret_val
+           )
          )
+       )
+
+
+      ; ======================================
+      ; BULK EXPRESSION
+      ;
+      ; Process every statement and return
+      ; the result of the final statement.
+      ; ======================================
+
+      ((eq?
+        (car parsed-exp)
+        'bulk-exp)
+
+       (if
+        (null?
+         (cdr parsed-exp))
+
+        ; Empty bulk-exp
+        (list
+         'terminator-exp
+         (list
+          'bulk-ret
+          (void)))
+
+        ; Execute every statement
+        (let
+            (
+             (ret_lst
+              (map
+               process
+               (cdr parsed-exp)))
+             )
+
+          ; Return last result
+          (list
+           'terminator-exp
+
+           (list
+            'bulk-ret
+
+            (list-ref
+             ret_lst
+             (-
+              (length ret_lst)
+              1)))
+           )
+          )
+        )
        )
 
 
@@ -205,7 +301,6 @@
       (else
        (displayln
         "ERROR: expression has not been supported yet."))
-
       )
     )
   )
