@@ -1,98 +1,241 @@
 #lang racket
 
-; parser translates our programming language
-; into an intermediate representation
+(require "util.rkt")
 
-(define parse
+
+; Parser translates the programming language
+; into an intermediate form.
+
+(define
+  parse
   (lambda (exp)
+
     (cond
 
-      ; variable
-      ((symbol? exp)
-       (list 'var-exp exp))
-
-      ; number
-      ((number? exp)
-       (list 'num-exp exp))
-
-      ; string
-      ((string? exp)
-       (list 'string-exp exp))
-
-      ; empty statement
-      ((null? exp)
-       (displayln "ERROR: empty statement"))
-
-      ; math expression
-      ; (math a + b)
+      ; ======================================
+      ; VARIABLE
+      ;
+      ; a
       ; ->
-      ; (math-exp + (var-exp a) (var-exp b))
-      ((and (list? exp)
-            (eq? 'math (car exp)))
+      ; (var-exp a)
+      ; ======================================
+
+      ((symbol? exp)
+       (list
+        'var-exp
+        exp))
+
+
+      ; ======================================
+      ; NUMBER
+      ;
+      ; 10
+      ; ->
+      ; (num-exp 10)
+      ; ======================================
+
+      ((number? exp)
+       (list
+        'num-exp
+        exp))
+
+
+      ; ======================================
+      ; STRING
+      ; ======================================
+
+      ((string? exp)
+       (list
+        'string-exp
+        exp))
+
+
+      ; ======================================
+      ; EMPTY
+      ; ======================================
+
+      ((null? exp)
+       (displayln
+        "ERROR: empty statement"))
+
+
+      ; ======================================
+      ; NOT
+      ;
+      ; (! a)
+      ;
+      ; ->
+      ;
+      ; (boolean-exp ! (var-exp a))
+      ; ======================================
+
+      ((and
+        (list? exp)
+        (= (length exp) 2)
+        (eq? '! (car exp)))
+
+       (list
+        'boolean-exp
+        '!
+        (parse
+         (cadr exp)))
+       )
+
+
+      ; ======================================
+      ; BOOLEAN EXPRESSION
+      ;
+      ; (a > b)
+      ;
+      ; ->
+      ;
+      ; (boolean-exp
+      ;     >
+      ;     (var-exp a)
+      ;     (var-exp b))
+      ; ======================================
+
+      ((and
+        (list? exp)
+        (= (length exp) 3)
+        (is_valid_boolean_op
+         (cadr exp)))
+
+       (list
+        'boolean-exp
+        (cadr exp)
+        (parse
+         (car exp))
+        (parse
+         (caddr exp)))
+       )
+
+
+      ; ======================================
+      ; MATH EXPRESSION
+      ;
+      ; (a + b)
+      ;
+      ; ->
+      ;
+      ; (math-exp
+      ;     +
+      ;     (var-exp a)
+      ;     (var-exp b))
+      ; ======================================
+
+      ((and
+        (list? exp)
+        (= (length exp) 3)
+        (is_valid_math_op
+         (cadr exp)))
 
        (list
         'math-exp
-        (caddr exp)
-        (parse (cadr exp))
-        (parse (cadddr exp))))
+        (cadr exp)
+        (parse
+         (car exp))
+        (parse
+         (caddr exp)))
+       )
 
-      ; function
+
+      ; ======================================
+      ; ASK EXPRESSION
       ;
-      ; ((function (params a b)
-      ;            (math a + b))
-      ;   (4 5))
+      ; (ask
+      ;    (a < b)
+      ;    ((a + b))
+      ;    ((a * b)))
       ;
       ; ->
       ;
-      ; ((func-exp
-      ;    ((var-exp a) (var-exp b))
-      ;    (math-exp + (var-exp a) (var-exp b)))
-      ;  ((num-exp 4) (num-exp 5)))
+      ; (ask-exp
+      ;    (boolean-exp ...)
+      ;    (bulk-exp ...)
+      ;    (bulk-exp ...))
+      ; ======================================
 
-      ((and (list? exp)
-            (= (length exp) 2)
-            (list? (car exp))
-            (not (null? (car exp)))
-            (eq? 'function (car (car exp))))
+      ((and
+        (list? exp)
+        (= (length exp) 4)
+        (eq? 'ask (car exp)))
 
-       (let*
-           (
-            ; (function (params a b) (math a + b))
-            (function-definition (car exp))
+       (list
+        'ask-exp
 
-            ; (4 5)
-            (argument-list (cadr exp))
+        ; Boolean condition
+        (parse
+         (cadr exp))
 
-            ; (params a b)
-            (parameter-section
-             (cadr function-definition))
+        ; True statements
+        (cons
+         'bulk-exp
+         (map
+          parse
+          (caddr exp)))
 
-            ; (a b)
-            (parameters
-             (cdr parameter-section))
+        ; False statements
+        (cons
+         'bulk-exp
+         (map
+          parse
+          (cadddr exp)))
+        )
+       )
 
-            ; (math a + b)
-            (body
-             (caddr function-definition))
-            )
 
-         (list
+      ; ======================================
+      ; FUNCTION EXPRESSION
+      ; ======================================
 
-          ; function expression
-          (list
-           'func-exp
-           (map parse parameters)
-           (parse body))
+      ((and
+        (list? exp)
+        (eq? 'function (car exp)))
 
-          ; argument values
-          (map parse argument-list))))
+       (if
+        (and
+         (equal?
+          (length (cadr exp))
+          (length (cadddr exp)))
 
-      ; anything else
+         (not
+          (null? (caddr exp))))
+
+        (list
+         'func-exp
+
+         (create_pair_list
+          '()
+          (map
+           parse
+           (cadr exp))
+          (map
+           parse
+           (cadddr exp)))
+
+         (cons
+          'bulk-exp
+          (map
+           parse
+           (caddr exp)))
+         )
+
+        (displayln
+         "PARSER ERROR: this is not a valid anonymous function definition."))
+       )
+
+
+      ; ======================================
+      ; UNSUPPORTED
+      ; ======================================
+
       (else
        (displayln
         "PARSER ERROR: the statement has not been supported yet."))
       )
     )
   )
+
 
 (provide (all-defined-out))
