@@ -1,241 +1,173 @@
-#lang racket
 
+#lang racket
 (require "util.rkt")
 
+(define (parse exp)
+  (cond
 
-; Parser translates the programming language
-; into an intermediate form.
+    ; ======================================
+    ; BASIC VALUES
+    ; ======================================
 
-(define
-  parse
-  (lambda (exp)
+    ((boolean? exp)
+     (list 'boolean-exp
+           (if exp 'True 'False)
+           (void)
+           (void)))
 
-    (cond
+    ((and (symbol? exp)
+          (memq exp '(True False)))
+     (list 'boolean-exp exp (void) (void)))
 
-      ; ======================================
-      ; VARIABLE
-      ;
-      ; a
-      ; ->
-      ; (var-exp a)
-      ; ======================================
+    ((symbol? exp)
+     (list 'var-exp exp))
 
-      ((symbol? exp)
-       (list
-        'var-exp
-        exp))
+    ((number? exp)
+     (list 'num-exp exp))
 
+    ((string? exp)
+     (list 'string-exp exp))
 
-      ; ======================================
-      ; NUMBER
-      ;
-      ; 10
-      ; ->
-      ; (num-exp 10)
-      ; ======================================
+    ((null? exp)
+     (error "PARSER ERROR: empty statement"))
 
-      ((number? exp)
-       (list
-        'num-exp
-        exp))
+    ((not (list? exp))
+     (error "PARSER ERROR: unsupported input"))
 
+    ; ======================================
+    ; ASSIGNMENT
+    ;
+    ; (set a (a + 1))
+    ; ======================================
 
-      ; ======================================
-      ; STRING
-      ; ======================================
+    ((eq? (car exp) 'set)
+     (unless (and (= (length exp) 3)
+                  (symbol? (cadr exp)))
+       (error "PARSER ERROR: invalid set expression"))
 
-      ((string? exp)
-       (list
-        'string-exp
-        exp))
+     (list 'set-exp
+           (cadr exp)
+           (parse (caddr exp))))
 
+    ; ======================================
+    ; WHILE LOOP
+    ;
+    ; (while (a < 10)
+    ;   ((set a (a + 1))))
+    ; ======================================
 
-      ; ======================================
-      ; EMPTY
-      ; ======================================
+    ((eq? (car exp) 'while)
+     (unless (= (length exp) 3)
+       (error "PARSER ERROR: invalid while loop"))
 
-      ((null? exp)
-       (displayln
-        "ERROR: empty statement"))
+     (list
+      'while-exp
+      (parse (cadr exp))
+      (parse-bulk (caddr exp))))
 
+    ; ======================================
+    ; DO-WHILE LOOP
+    ;
+    ; (do
+    ;   ((set a (a + 1)))
+    ;   while
+    ;   (a < 10))
+    ; ======================================
 
-      ; ======================================
-      ; NOT
-      ;
-      ; (! a)
-      ;
-      ; ->
-      ;
-      ; (boolean-exp ! (var-exp a))
-      ; ======================================
+    ((eq? (car exp) 'do)
+     (unless (and (= (length exp) 4)
+                  (eq? (caddr exp) 'while))
+       (error "PARSER ERROR: invalid do-while"))
 
-      ((and
-        (list? exp)
-        (= (length exp) 2)
-        (eq? '! (car exp)))
+     (list
+      'do-while-exp
+      (parse-bulk (cadr exp))
+      (parse (cadddr exp))))
 
-       (list
-        'boolean-exp
-        '!
-        (parse
-         (cadr exp)))
-       )
+    ; ======================================
+    ; ASK / IF CONDITION
+    ; ======================================
 
+    ((eq? (car exp) 'ask)
+     (unless (= (length exp) 4)
+       (error "PARSER ERROR: invalid ask"))
 
-      ; ======================================
-      ; BOOLEAN EXPRESSION
-      ;
-      ; (a > b)
-      ;
-      ; ->
-      ;
-      ; (boolean-exp
-      ;     >
-      ;     (var-exp a)
-      ;     (var-exp b))
-      ; ======================================
+     (list
+      'ask-exp
+      (parse (cadr exp))
+      (parse-bulk (caddr exp))
+      (parse-bulk (cadddr exp))))
 
-      ((and
-        (list? exp)
-        (= (length exp) 3)
-        (is_valid_boolean_op
-         (cadr exp)))
+    ; ======================================
+    ; FUNCTION
+    ; ======================================
 
-       (list
-        'boolean-exp
-        (cadr exp)
-        (parse
-         (car exp))
-        (parse
-         (caddr exp)))
-       )
+    ((eq? (car exp) 'function)
+     (unless
+         (and (= (length exp) 4)
+              (list? (cadr exp))
+              (list? (caddr exp))
+              (list? (cadddr exp))
+              (= (length (cadr exp))
+                 (length (cadddr exp)))
+              (not (null? (caddr exp))))
+       (error "PARSER ERROR: invalid function"))
 
+     (list
+      'func-exp
+      (create_pair_list
+       '()
+       (map parse (cadr exp))
+       (map parse (cadddr exp)))
+      (parse-bulk (caddr exp))))
 
-      ; ======================================
-      ; MATH EXPRESSION
-      ;
-      ; (a + b)
-      ;
-      ; ->
-      ;
-      ; (math-exp
-      ;     +
-      ;     (var-exp a)
-      ;     (var-exp b))
-      ; ======================================
+    ; ======================================
+    ; NOT
+    ; ======================================
 
-      ((and
-        (list? exp)
-        (= (length exp) 3)
-        (is_valid_math_op
-         (cadr exp)))
+    ((and (= (length exp) 2)
+          (eq? (car exp) '!))
+     (list 'boolean-exp
+           '!
+           (parse (cadr exp))
+           (void)))
 
-       (list
-        'math-exp
-        (cadr exp)
-        (parse
-         (car exp))
-        (parse
-         (caddr exp)))
-       )
+    ; ======================================
+    ; BOOLEAN EXPRESSION
+    ; ======================================
 
+    ((and (= (length exp) 3)
+          (is_valid_boolean_op (cadr exp)))
+     (list
+      'boolean-exp
+      (cadr exp)
+      (parse (car exp))
+      (parse (caddr exp))))
 
-      ; ======================================
-      ; ASK EXPRESSION
-      ;
-      ; (ask
-      ;    (a < b)
-      ;    ((a + b))
-      ;    ((a * b)))
-      ;
-      ; ->
-      ;
-      ; (ask-exp
-      ;    (boolean-exp ...)
-      ;    (bulk-exp ...)
-      ;    (bulk-exp ...))
-      ; ======================================
+    ; ======================================
+    ; MATH EXPRESSION
+    ; ======================================
 
-      ((and
-        (list? exp)
-        (= (length exp) 4)
-        (eq? 'ask (car exp)))
+    ((and (= (length exp) 3)
+          (is_valid_math_op (cadr exp)))
+     (list
+      'math-exp
+      (cadr exp)
+      (parse (car exp))
+      (parse (caddr exp))))
 
-       (list
-        'ask-exp
+    (else
+     (error "PARSER ERROR: unsupported expression"))))
 
-        ; Boolean condition
-        (parse
-         (cadr exp))
+; ==========================================
+; BULK PARSER
+; ==========================================
 
-        ; True statements
-        (cons
-         'bulk-exp
-         (map
-          parse
-          (caddr exp)))
+(define (parse-bulk statements)
+  (unless (list? statements)
+    (error "PARSER ERROR: body must be a list"))
 
-        ; False statements
-        (cons
-         'bulk-exp
-         (map
-          parse
-          (cadddr exp)))
-        )
-       )
-
-
-      ; ======================================
-      ; FUNCTION EXPRESSION
-      ; ======================================
-
-      ((and
-        (list? exp)
-        (eq? 'function (car exp)))
-
-       (if
-        (and
-         (equal?
-          (length (cadr exp))
-          (length (cadddr exp)))
-
-         (not
-          (null? (caddr exp))))
-
-        (list
-         'func-exp
-
-         (create_pair_list
-          '()
-          (map
-           parse
-           (cadr exp))
-          (map
-           parse
-           (cadddr exp)))
-
-         (cons
-          'bulk-exp
-          (map
-           parse
-           (caddr exp)))
-         )
-
-        (displayln
-         "PARSER ERROR: this is not a valid anonymous function definition."))
-       )
-
-
-      ; ======================================
-      ; UNSUPPORTED
-      ; ======================================
-
-      (else
-       (displayln
-        "PARSER ERROR: the statement has not been supported yet."))
-      )
-    )
-  )
-
+  (cons 'bulk-exp
+        (map parse statements)))
 
 (provide (all-defined-out))
