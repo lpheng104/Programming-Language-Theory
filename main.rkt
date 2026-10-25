@@ -9,6 +9,7 @@
 ; ==========================================
 
 (define (run-test title code)
+
   (displayln "================================")
   (displayln title)
   (displayln "================================")
@@ -16,77 +17,87 @@
   (displayln "Original:")
   (displayln code)
 
-  (define parsed (parse code))
-
   (displayln "Parsed:")
-  (displayln parsed)
+  (displayln (parse code))
 
   (displayln "Execution:")
-  (displayln (process parsed))
+  (displayln (process (parse code)))
 
-  (displayln "Environment after execution:")
+  (displayln "Environment:")
   (displayln environment)
 
   (newline))
 
 ; ==========================================
-; TASK 1: IF / ASK CONDITION
+; TASK 1: UPDATE EXISTING VARIABLE
 ; ==========================================
 
 (run-test
- "TASK 1: ASK TRUE"
- '(ask
-   (a < b)
-   ((a + b))
-   ((a * b))))
+ "TASK 1: ASSIGN EXISTING VARIABLE"
+ '(a = 1))
+
+; ==========================================
+; TASK 1: CREATE NEW VARIABLE
+; ==========================================
 
 (run-test
- "TASK 1: ASK FALSE"
+ "TASK 1: ASSIGN NEW VARIABLE"
+ '(c = 5))
+
+; ==========================================
+; TASK 1: UPDATE NEW VARIABLE
+; ==========================================
+
+(run-test
+ "TASK 1: UPDATE VARIABLE"
+ '(c = (c + 5)))
+
+; ==========================================
+; TASK 2: FOR LOOP
+;
+; for (a = 0; a < 10; a = a + 1)
+; {
+;    b = b + 1;
+; }
+; ==========================================
+
+(run-test
+ "TASK 2: FOR LOOP"
+ '(for
+   (a = 0)
+   (a < 10)
+   (a = (a + 1))
+   ((b = (b + 1)))))
+
+; ==========================================
+; VERIFY FINAL VARIABLE VALUES
+; ==========================================
+
+(displayln "================================")
+(displayln "VERIFY FOR LOOP RESULTS")
+(displayln "================================")
+
+(displayln "Final value of a:")
+(displayln (process (parse 'a)))
+
+(displayln "Final value of b:")
+(displayln (process (parse 'b)))
+
+(newline)
+
+; ==========================================
+; EXTRA: ASK / IF CONDITION
+; ==========================================
+
+(run-test
+ "EXTRA: ASK CONDITION"
  '(ask
    (a > b)
    ((a + b))
    ((a * b))))
 
 ; ==========================================
-; TASK 2: WHILE LOOP
-; ==========================================
-
-; Local a starts at 1.
-; Increment until a reaches 10.
-
-(run-test
- "TASK 2: WHILE LOOP"
- '(while
-   (a < 10)
-   ((set a (a + 1)))))
-
-; ==========================================
-; TASK 3: DO-WHILE LOOP
-; ==========================================
-
-(run-test
- "TASK 3: DO-WHILE LOOP"
- '(do
-   ((set a (a + 1)))
-   while
-   (a < 10)))
-
-; ==========================================
-; EXTRA TEST: DO-WHILE RUNS ONCE
-; ==========================================
-
-; Condition is already false.
-; Body must still execute one time.
-
-(run-test
- "EXTRA: DO-WHILE RUNS AT LEAST ONCE"
- '(do
-   ((set a (a + 1)))
-   while
-   (a < 0)))
-
-; ==========================================
-; EXTRA TEST: FUNCTION STILL WORKS
+; EXTRA: FUNCTION
 ; ==========================================
 
 (run-test
