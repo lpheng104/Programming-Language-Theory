@@ -4,188 +4,96 @@
 (require "util.rkt")
 (require "interpreter.rkt")
 
-
-(displayln "================================")
-(displayln "BOOLEAN AND ASK TESTS")
-(displayln "================================")
-
-(newline)
-
-
 ; ==========================================
-; TEST 1
-; BOOLEAN: a > b
-;
-; a = 1
-; b = 2
-;
-; Expected: #f
+; TEST HELPER
 ; ==========================================
 
-(displayln "TEST 1: BOOLEAN")
+(define (run-test title code)
+  (displayln "================================")
+  (displayln title)
+  (displayln "================================")
 
-(define boolean-test
-  '(a > b))
+  (displayln "Original:")
+  (displayln code)
 
-(displayln "Original:")
-(displayln boolean-test)
+  (define parsed (parse code))
 
-(displayln "Parsed:")
-(displayln
- (parse boolean-test))
+  (displayln "Parsed:")
+  (displayln parsed)
 
-(displayln "Execution:")
-(displayln
- (process
-  (parse boolean-test)))
+  (displayln "Execution:")
+  (displayln (process parsed))
 
-(newline)
+  (displayln "Environment after execution:")
+  (displayln environment)
 
-
-; ==========================================
-; TEST 2
-; BOOLEAN: a < b
-;
-; Expected: #t
-; ==========================================
-
-(displayln "TEST 2: BOOLEAN")
-
-(define boolean-test-2
-  '(a < b))
-
-(displayln "Original:")
-(displayln boolean-test-2)
-
-(displayln "Parsed:")
-(displayln
- (parse boolean-test-2))
-
-(displayln "Execution:")
-(displayln
- (process
-  (parse boolean-test-2)))
-
-(newline)
-
+  (newline))
 
 ; ==========================================
-; TEST 3
-; ASK TRUE
-;
-; a < b = TRUE
-;
-; TRUE:
-;     a + b = 3
-;
-; FALSE:
-;     a * b = 2
-;
-; Expected branch result = 3
+; TASK 1: IF / ASK CONDITION
 ; ==========================================
 
-(displayln "TEST 3: ASK TRUE")
+(run-test
+ "TASK 1: ASK TRUE"
+ '(ask
+   (a < b)
+   ((a + b))
+   ((a * b))))
 
-(define ask-true-test
-
-  '(ask
-    (a < b)
-
-    ; true statements
-    ((a + b))
-
-    ; false statements
-    ((a * b)))
-  )
-
-
-(displayln "Original:")
-(displayln ask-true-test)
-
-(displayln "Parsed:")
-(displayln
- (parse ask-true-test))
-
-(displayln "Execution:")
-(displayln
- (process
-  (parse ask-true-test)))
-
-(newline)
-
+(run-test
+ "TASK 1: ASK FALSE"
+ '(ask
+   (a > b)
+   ((a + b))
+   ((a * b))))
 
 ; ==========================================
-; TEST 4
-; ASK FALSE
-;
-; a > b = FALSE
-;
-; TRUE:
-;     a + b = 3
-;
-; FALSE:
-;     a * b = 2
-;
-; Expected branch result = 2
+; TASK 2: WHILE LOOP
 ; ==========================================
 
-(displayln "TEST 4: ASK FALSE")
+; Local a starts at 1.
+; Increment until a reaches 10.
 
-(define ask-false-test
-
-  '(ask
-    (a > b)
-
-    ; true statements
-    ((a + b))
-
-    ; false statements
-    ((a * b)))
-  )
-
-
-(displayln "Original:")
-(displayln ask-false-test)
-
-(displayln "Parsed:")
-(displayln
- (parse ask-false-test))
-
-(displayln "Execution:")
-(displayln
- (process
-  (parse ask-false-test)))
-
-(newline)
-
+(run-test
+ "TASK 2: WHILE LOOP"
+ '(while
+   (a < 10)
+   ((set a (a + 1)))))
 
 ; ==========================================
-; TEST 5
-; FUNCTION FROM PREVIOUS ASSIGNMENT
-;
-; Make sure functions still work.
+; TASK 3: DO-WHILE LOOP
 ; ==========================================
 
-(displayln "TEST 5: FUNCTION")
+(run-test
+ "TASK 3: DO-WHILE LOOP"
+ '(do
+   ((set a (a + 1)))
+   while
+   (a < 10)))
 
-(define function-test
+; ==========================================
+; EXTRA TEST: DO-WHILE RUNS ONCE
+; ==========================================
 
-  '(function
-    (a b)
+; Condition is already false.
+; Body must still execute one time.
 
-    ((1 + 1)
-     (a * b)
-     (a + 1))
+(run-test
+ "EXTRA: DO-WHILE RUNS AT LEAST ONCE"
+ '(do
+   ((set a (a + 1)))
+   while
+   (a < 0)))
 
-    (4 5))
-  )
+; ==========================================
+; EXTRA TEST: FUNCTION STILL WORKS
+; ==========================================
 
+(run-test
+ "EXTRA: FUNCTION"
+ '(function
+   (x y)
+   ((x * y))
+   (4 5)))
 
-(displayln "Parsed:")
-(displayln
- (parse function-test))
-
-(displayln "Execution:")
-(displayln
- (process
-  (parse function-test)))
+(displayln "ALL TESTS COMPLETED")
