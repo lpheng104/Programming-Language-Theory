@@ -5,11 +5,10 @@
 ; ==========================================
 
 (define scope
-  (list
-   (list 'a 1)
-   (list 'b 2)))
+  '((a 1) (b 2)))
 
-(define environment (list scope))
+(define environment
+  (list scope))
 
 ; ==========================================
 ; VARIABLE LOOKUP
@@ -26,18 +25,21 @@
 (define (resolve_env var_env var_name)
   (cond
     [(null? var_env) (void)]
-    [(void? (resolve (car var_env) var_name))
-     (resolve_env (cdr var_env) var_name)]
     [else
-     (resolve (car var_env) var_name)]))
+     (define value
+       (resolve (car var_env) var_name))
+     (if (void? value)
+         (resolve_env (cdr var_env) var_name)
+         value)]))
 
 ; ==========================================
-; VARIABLE ASSIGNMENT
+; UPDATE VARIABLE IN A SCOPE
 ; ==========================================
 
 (define (update_pair left_part lst key value)
   (cond
-    [(null? lst) left_part]
+    [(null? lst)
+     left_part]
     [(eq? (caar lst) key)
      (append left_part
              (list (list key value))
@@ -50,23 +52,26 @@
       value)]))
 
 (define (update_scope var_scope var_name var_value)
-  (cond
-    [(void? (resolve var_scope var_name))
-     (cons (list var_name var_value) var_scope)]
-    [else
-     (update_pair '()
-                  var_scope
-                  var_name
-                  var_value)]))
+  (if (void? (resolve var_scope var_name))
+      (cons (list var_name var_value) var_scope)
+      (update_pair '()
+                   var_scope
+                   var_name
+                   var_value)))
 
-; Update the nearest existing variable.
-; If it does not exist, insert into the top scope.
+; ==========================================
+; ASSIGNMENT
+;
+; Update existing variable in nearest scope.
+; Otherwise add it to the top scope.
+; ==========================================
 
 (define (wolf_env var_env var_name var_value)
 
   (define (update-existing env)
     (cond
-      [(null? env) '()]
+      [(null? env)
+       '()]
       [(not (void? (resolve (car env) var_name)))
        (cons
         (update_scope (car env) var_name var_value)
@@ -77,7 +82,7 @@
 
   (cond
     [(null? var_env)
-     (error "ERROR: environment is empty")]
+     (error "INTERPRETER ERROR: empty environment.")]
 
     [(void? (resolve_env var_env var_name))
      (set! environment
@@ -99,53 +104,55 @@
         (cons new_scope environment)))
 
 (define (pop_scope)
-  (if (null? environment)
-      (error "ERROR: empty environment")
-      (set! environment (cdr environment))))
+  (when (null? environment)
+    (error "INTERPRETER ERROR: empty environment."))
+  (set! environment (cdr environment)))
 
 (define (update_base_environment new_env)
   (set! environment new_env))
 
 ; ==========================================
-; MATH
+; MATH OPERATORS
 ; ==========================================
 
 (define (is_valid_math_op op)
-  (if (member op '(+ - * / // %))
-      #t
-      #f))
+  (and (symbol? op)
+       (if (memq op '(+ - * / // %))
+           #t
+           #f)))
 
 (define (do_math op left right)
-  (cond
-    [(eq? op '+) (+ left right)]
-    [(eq? op '-) (- left right)]
-    [(eq? op '*) (* left right)]
-    [(eq? op '/) (/ left right)]
-    [(eq? op '//) (quotient left right)]
-    [(eq? op '%) (modulo left right)]
-    [else (error "ERROR: invalid math operator")]))
+  (case op
+    [(+) (+ left right)]
+    [(-) (- left right)]
+    [(*) (* left right)]
+    [(/) (/ left right)]
+    [(//) (quotient left right)]
+    [(%) (modulo left right)]
+    [else
+     (error "INTERPRETER ERROR: invalid math operator.")]))
 
 ; ==========================================
 ; BOOLEAN OPERATORS
 ; ==========================================
 
 (define (is_valid_boolean_op op)
-  (if (member op '(> >= < <= == && || and or))
-      #t
-      #f))
+  (and (symbol? op)
+       (if (memq op '(> >= < <= == && || and or))
+           #t
+           #f)))
 
 (define (calculate_boolean op left right)
-  (cond
-    [(eq? op '>) (> left right)]
-    [(eq? op '>=) (>= left right)]
-    [(eq? op '<) (< left right)]
-    [(eq? op '<=) (<= left right)]
-    [(eq? op '==) (equal? left right)]
-    [(or (eq? op '&&) (eq? op 'and))
-     (and left right)]
-    [(or (eq? op '||) (eq? op 'or))
-     (or left right)]
-    [else (error "ERROR: invalid boolean operator")]))
+  (case op
+    [(>) (> left right)]
+    [(>=) (>= left right)]
+    [(<) (< left right)]
+    [(<=) (<= left right)]
+    [(==) (equal? left right)]
+    [(&& and) (and left right)]
+    [(|| or) (or left right)]
+    [else
+     (error "INTERPRETER ERROR: invalid boolean operator.")]))
 
 ; ==========================================
 ; FUNCTION PARAMETER PAIRS
