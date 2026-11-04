@@ -3,30 +3,29 @@
 (require "util.rkt")
 
 ; ==========================================
-; HELPER: REQUIRE BOOLEAN
+; RETURN VALUE HELPER
+; ==========================================
+
+(define (return-value? value)
+  (and (list? value)
+       (= (length value) 2)
+       (eq? (car value) 'return-val)))
+
+; ==========================================
+; BOOLEAN HELPER
 ; ==========================================
 
 (define (require-boolean value)
   (unless (boolean? value)
-    (error "ERROR: condition must be boolean"))
+    (error
+     "INTERPRETER ERROR: condition must be boolean."))
   value)
 
 ; ==========================================
-; HELPER: GET BULK RETURN VALUE
+; SCOPE HELPER
 ; ==========================================
 
-(define (bulk-value result)
-  (if (and (list? result)
-           (= (length result) 2)
-           (eq? (car result) 'terminator-exp))
-      (cadr (cadr result))
-      result))
-
-; ==========================================
-; HELPER: TEMPORARY SCOPE
-; ==========================================
-
-(define (with-new-scope thunk [new-scope '()])
+(define (with-new-scope new-scope thunk)
   (dynamic-wind
    (lambda ()
      (push_scope new-scope))
@@ -35,214 +34,401 @@
      (pop_scope))))
 
 ; ==========================================
-; HELPER: WHILE LOOP
+; PART 1: EXECUTE STATEMENT LIST
+;
+; Run statements in order.
+; Stop immediately on return-val.
+; Otherwise return void.
+; ==========================================
+
+(define (execute-list statements)
+  (cond
+    [(null? statements)
+     (void)]
+
+    [else
+     (define result
+       (process (car statements)))
+
+     (if (return-value? result)
+         result
+         (execute-list (cdr statements)))]))
+
+; ==========================================
+; PART 2: DEFINE NAMED FUNCTION
+; ==========================================
+
+(define (execute-function-definition parsed-exp)
+
+  (define function-name
+    (cadr (cadr parsed-exp)))
+
+  (define parameters
+    (map cadr (caddr parsed-exp)))
+
+  (define body
+    (cadddr parsed-exp))
+
+  ; A function is stored as a value.
+  (define function-value
+    (list 'func-val parameters body))
+
+  (wolf_env environment
+            function-name
+            function-value)
+
+  (void))
+
+; ==========================================
+; PART 2: CALL NAMED FUNCTION
+; ==========================================
+
+(define (execute-function-call parsed-exp)
+
+  ; Step 1: Find function by name.
+  (define function-name
+    (cadr (cadr parsed-exp)))
+
+  (define function-value
+    (resolve_env environment function-name))
+
+  ; Step 2: Confirm that it is a function.
+  (unless
+      (and (list? function-value)
+           (= (length function-value) 3)
+           (eq? (car function-value) 'func-val))
+    (error
+     "INTERPRETER ERROR: not a function."))
+
+  ; Step 3: Get parameters and body.
+  (define parameters
+    (cadr function-value))
+
+  (define body
+    (caddr function-value))
+
+  ; Step 4: Evaluate arguments in caller's scope.
+  (define arguments
+    (map process (caddr parsed-exp)))
+
+  ; Step 5: Check number of arguments.
+  (unless (= (length parameters)
+             (length arguments))
+    (error
+     "INTERPRETER ERROR: wrong number of arguments."))
+
+  ; Step 6: Bind parameters to argument values.
+  (define new-scope
+    (map list parameters arguments))
+
+  ; Step 7: Execute function in new scope.
+  (define result
+    (with-new-scope
+     new-scope
+     (lambda ()
+       (process body))))
+
+  ; Step 8: Unwrap return value.
+  (if (return-value? result)
+      (cadr result)
+      (void)))
+
+; ==========================================
+; WHILE LOOP
 ; ==========================================
 
 (define (execute-while condition body)
+
   (with-new-scope
+   '()
    (lambda ()
-     (let loop ((last-result (void)))
+
+     (let loop ()
+
        (if (require-boolean (process condition))
-           (let ((result (bulk-value (process body))))
-             (loop result))
-           last-result)))))
+
+           (let ((result (process body)))
+
+             ; Return immediately if body returns.
+             (if (return-value? result)
+                 result
+                 (loop)))
+
+           (void))))))
 
 ; ==========================================
-; HELPER: DO-WHILE LOOP
+; DO-WHILE LOOP
 ; ==========================================
 
 (define (execute-do-while body condition)
+
   (with-new-scope
+   '()
    (lambda ()
+
      (let loop ()
-       (let ((result (bulk-value (process body))))
-         (if (require-boolean (process condition))
-             (loop)
-             result))))))
+
+       (define result
+         (process body))
+
+       (cond
+         [(return-value? result)
+          result]
+
+         [(require-boolean (process condition))
+          (loop)]
+
+         [else
+          (void)])))))
 
 ; ==========================================
-; HELPER: FOR LOOP
+; FOR LOOP
 ; ==========================================
 
-(define (execute-for initialization condition increment body)
+(define (execute-for initialization
+                     condition
+                     increment
+                     body)
+
   (with-new-scope
+   '()
    (lambda ()
 
-     ; Execute initialization once.
-     (process initialization)
+     ; Initialization executes once.
+     (define initial-result
+       (process initialization))
 
-     ; Repeat while condition is true.
-     (let loop ((last-result (void)))
+     (if (return-value? initial-result)
+         initial-result
 
-       (if (require-boolean (process condition))
+         (let loop ()
 
-           (let ((result (bulk-value (process body))))
+           (if (require-boolean (process condition))
 
-             ; Increment after executing body.
-             (process increment)
+               (let ((result (process body)))
 
-             ; Repeat.
-             (loop result))
+                 (if (return-value? result)
+                     result
 
-           ; Condition false: stop.
-           last-result)))))
+                     (let ((increment-result
+                            (process increment)))
+
+                       (if (return-value? increment-result)
+                           increment-result
+                           (loop)))))
+
+               (void)))))))
 
 ; ==========================================
-; HELPER: FUNCTION
+; OLD ANONYMOUS FUNCTION SUPPORT
 ; ==========================================
 
-(define (execute-function parsed-exp)
-  (let* ((pairs (cadr parsed-exp))
-         (new-scope
-          (map
-           (lambda (pair)
-             (list
-              (cadr (car pair))
-              (process (cadr pair))))
-           pairs))
-         (body (caddr parsed-exp)))
+(define (execute-anonymous-function parsed-exp)
 
+  (define parameters
+    (map cadr (cadr parsed-exp)))
+
+  (define arguments
+    (map process (caddr parsed-exp)))
+
+  (define body
+    (cadddr parsed-exp))
+
+  (unless (= (length parameters)
+             (length arguments))
+    (error
+     "INTERPRETER ERROR: wrong number of arguments."))
+
+  (define result
     (with-new-scope
+     (map list parameters arguments)
      (lambda ()
-       (bulk-value (process body)))
-     new-scope)))
+       (process body))))
 
-; ==========================================
-; HELPER: BULK EXPRESSION
-; ==========================================
-
-(define (execute-bulk statements)
-  (let loop ((remaining statements)
-             (last-result (void)))
-
-    (if (null? remaining)
-
-        (list
-         'terminator-exp
-         (list 'bulk-ret last-result))
-
-        (loop
-         (cdr remaining)
-         (process (car remaining))))))
+  (if (return-value? result)
+      (cadr result)
+      (void)))
 
 ; ==========================================
 ; MAIN INTERPRETER
 ; ==========================================
 
 (define (process parsed-exp)
+
   (cond
 
-    ; EMPTY PROGRAM
+    ; ======================================
+    ; EMPTY
+    ; ======================================
+
     [(void? parsed-exp)
      (void)]
 
     [(null? parsed-exp)
-     (error "ERROR: EMPTY PROGRAM")]
+     (void)]
 
     ; ======================================
     ; VARIABLE
     ; ======================================
 
-    [(eq? 'var-exp (car parsed-exp))
-     (let ((value
-            (resolve_env environment
-                         (cadr parsed-exp))))
-       (if (void? value)
-           (error "ERROR: variable not found"
-                  (cadr parsed-exp))
-           value))]
+    [(eq? (car parsed-exp) 'var-exp)
+     (resolve_env environment
+                  (cadr parsed-exp))]
 
+    ; ======================================
     ; NUMBER
-    [(eq? 'num-exp (car parsed-exp))
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'num-exp)
      (cadr parsed-exp)]
 
+    ; ======================================
     ; STRING
-    [(eq? 'string-exp (car parsed-exp))
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'string-exp)
      (cadr parsed-exp)]
 
     ; ======================================
     ; MATH
+    ;
+    ; Evaluate each operand exactly once.
     ; ======================================
 
-    [(eq? 'math-exp (car parsed-exp))
-     (let ((left (process (caddr parsed-exp)))
-           (right (process (cadddr parsed-exp))))
+    [(eq? (car parsed-exp) 'math-exp)
 
-       (if (and (number? left)
-                (number? right))
+     (define operator
+       (cadr parsed-exp))
 
-           (do_math
-            (cadr parsed-exp)
-            left
-            right)
+     (define left
+       (process (caddr parsed-exp)))
 
-           (error "ERROR: math operands must be numbers")))]
+     (define right
+       (process (cadddr parsed-exp)))
+
+     (unless (and (number? left)
+                  (number? right))
+       (error
+        "INTERPRETER ERROR: math operands must be numbers."))
+
+     (do_math operator left right)]
 
     ; ======================================
     ; BOOLEAN
     ; ======================================
 
-    [(eq? 'boolean-exp (car parsed-exp))
-     (let ((op (cadr parsed-exp)))
+    [(eq? (car parsed-exp) 'boolean-exp)
 
-       (cond
+     (define operator
+       (cadr parsed-exp))
 
-         [(eq? op 'True)
-          #t]
+     (cond
 
-         [(eq? op 'False)
-          #f]
+       [(eq? operator 'True)
+        #t]
 
-         [(eq? op '!)
-          (not
-           (require-boolean
-            (process (caddr parsed-exp))))]
+       [(eq? operator 'False)
+        #f]
 
-         [(or (eq? op '&&)
-              (eq? op 'and))
-          (let ((left
-                 (require-boolean
-                  (process (caddr parsed-exp)))))
-            (and left
-                 (require-boolean
-                  (process (cadddr parsed-exp)))))]
+       [(eq? operator '!)
+        (not
+         (require-boolean
+          (process (caddr parsed-exp))))]
 
-         [(or (eq? op '||)
-              (eq? op 'or))
-          (let ((left
-                 (require-boolean
-                  (process (caddr parsed-exp)))))
-            (or left
-                (require-boolean
-                 (process (cadddr parsed-exp)))))]
+       [(or (eq? operator '&&)
+            (eq? operator 'and))
 
-         [else
-          (calculate_boolean
-           op
-           (process (caddr parsed-exp))
-           (process (cadddr parsed-exp)))]))]
+        (and
+         (require-boolean
+          (process (caddr parsed-exp)))
+         (require-boolean
+          (process (cadddr parsed-exp))))]
+
+       [(or (eq? operator '||)
+            (eq? operator 'or))
+
+        (or
+         (require-boolean
+          (process (caddr parsed-exp)))
+         (require-boolean
+          (process (cadddr parsed-exp))))]
+
+       [else
+        (define left
+          (process (caddr parsed-exp)))
+
+        (define right
+          (process (cadddr parsed-exp)))
+
+        (calculate_boolean
+         operator left right)])]
 
     ; ======================================
     ; TASK 1: VARIABLE ASSIGNMENT
-    ;
-    ; (assign-exp (var-exp a) (num-exp 1))
     ; ======================================
 
-    [(eq? 'assign-exp (car parsed-exp))
-     (let ((variable (cadr (cadr parsed-exp)))
-           (value (process (caddr parsed-exp))))
+    [(eq? (car parsed-exp) 'assign-exp)
 
-       ; Update existing variable or insert new.
-       (wolf_env environment variable value)
+     (define variable-name
+       (cadr (cadr parsed-exp)))
 
-       ; Return assigned value.
-       value)]
+     (define value
+       (process (caddr parsed-exp)))
+
+     (wolf_env environment variable-name value)
+
+     value]
 
     ; ======================================
-    ; ASK / IF CONDITION
+    ; PART 1: STATEMENT LIST
     ; ======================================
 
-    [(eq? 'ask-exp (car parsed-exp))
+    [(eq? (car parsed-exp) 'list-exp)
+     (execute-list (cdr parsed-exp))]
+
+    ; ======================================
+    ; PART 2: FUNCTION DEFINITION
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'func-def-exp)
+     (execute-function-definition parsed-exp)]
+
+    ; ======================================
+    ; PART 2: FUNCTION CALL
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'call-exp)
+     (execute-function-call parsed-exp)]
+
+    ; ======================================
+    ; PART 2: RETURN
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'return-exp)
+     (list
+      'return-val
+      (process (cadr parsed-exp)))]
+
+    ; ======================================
+    ; FIRE / PRINT
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'fire-exp)
+
+     (define value
+       (process (cadr parsed-exp)))
+
+     (write value)
+     (newline)
+
+     (void)]
+
+    ; ======================================
+    ; ASK / IF
+    ; ======================================
+
+    [(eq? (car parsed-exp) 'ask-exp)
+
      (if (require-boolean
           (process (cadr parsed-exp)))
 
@@ -251,28 +437,28 @@
          (process (cadddr parsed-exp)))]
 
     ; ======================================
-    ; WHILE LOOP
+    ; WHILE
     ; ======================================
 
-    [(eq? 'while-exp (car parsed-exp))
+    [(eq? (car parsed-exp) 'while-exp)
      (execute-while
       (cadr parsed-exp)
       (caddr parsed-exp))]
 
     ; ======================================
-    ; DO-WHILE LOOP
+    ; DO-WHILE
     ; ======================================
 
-    [(eq? 'do-while-exp (car parsed-exp))
+    [(eq? (car parsed-exp) 'do-while-exp)
      (execute-do-while
       (cadr parsed-exp)
       (caddr parsed-exp))]
 
     ; ======================================
-    ; TASK 2: FOR LOOP
+    ; FOR
     ; ======================================
 
-    [(eq? 'for-exp (car parsed-exp))
+    [(eq? (car parsed-exp) 'for-exp)
      (execute-for
       (cadr parsed-exp)
       (caddr parsed-exp)
@@ -280,24 +466,18 @@
       (list-ref parsed-exp 4))]
 
     ; ======================================
-    ; FUNCTION
+    ; OLD ANONYMOUS FUNCTION
     ; ======================================
 
-    [(eq? 'func-exp (car parsed-exp))
-     (execute-function parsed-exp)]
-
-    ; ======================================
-    ; BULK EXPRESSION
-    ; ======================================
-
-    [(eq? 'bulk-exp (car parsed-exp))
-     (execute-bulk (cdr parsed-exp))]
+    [(eq? (car parsed-exp) 'func-exp)
+     (execute-anonymous-function parsed-exp)]
 
     ; ======================================
     ; UNSUPPORTED
     ; ======================================
 
     [else
-     (error "ERROR: unsupported expression")]))
+     (error
+      "INTERPRETER ERROR: unsupported expression.")]))
 
 (provide (all-defined-out))
